@@ -1,0 +1,53 @@
+name: CI
+on: [push]
+
+env:
+  OPERA_URL: ${{ secrets.OPERA_URL }}
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 14
+      - run: npm ci
+      - uses: actions/setup-python@v3
+        with:
+          python-version: '3.x'
+      - uses: BSFishy/pip-action@v1
+        with:
+          packages: slither-analyzer
+      - run: slither .
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 14
+      - run: npm ci
+      - run: npx prettier '**/*.{json,sol,md}' --check
+      - run: npx solhint 'contracts/**/*.sol'
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 14
+      - run: npm ci
+      - run: REPORT_GAS=true npx hardhat test
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 14
+      - run: npm ci
+      - run: npx hardhat coverage
