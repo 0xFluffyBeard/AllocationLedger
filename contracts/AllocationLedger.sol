@@ -185,10 +185,11 @@ contract AllocationLedger is ReentrancyGuard, Context, Ownable, Pausable {
     /**
      * @dev Set the deposit limits.
      */
-    function setLimits(uint256 depositMax_, uint256 depositUserMax_, uint256 depositUserMin_)
-        public
-        onlyOwner
-    {
+    function setLimits(
+        uint256 depositMax_,
+        uint256 depositUserMax_,
+        uint256 depositUserMin_
+    ) public onlyOwner {
         depositMax = depositMax_;
         depositUserMax = depositUserMax_;
         depositUserMin = depositUserMin_;

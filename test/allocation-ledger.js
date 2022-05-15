@@ -72,7 +72,11 @@ describe("AllocationLedger", function () {
       const testdepositUserMax = ethers.utils.parseEther("20000");
       const testdepositUserMin = ethers.utils.parseEther("10000");
 
-      await ledger.setLimits(testdepositMax, testdepositUserMax, testdepositUserMin);
+      await ledger.setLimits(
+        testdepositMax,
+        testdepositUserMax,
+        testdepositUserMin
+      );
 
       expect(await ledger.depositMax()).to.equal(testdepositMax);
       expect(await ledger.depositUserMax()).to.equal(testdepositUserMax);
@@ -82,9 +86,9 @@ describe("AllocationLedger", function () {
     });
 
     it("Should allow only the owner to updagte the limits", async () => {
-      await expect(ledger.connect(account1).setLimits(0, 0, 0)).to.be.revertedWith(
-        "Ownable: caller is not the owner"
-      );
+      await expect(
+        ledger.connect(account1).setLimits(0, 0, 0)
+      ).to.be.revertedWith("Ownable: caller is not the owner");
     });
 
     it("Should add to the whitelist and emit an event", async () => {
