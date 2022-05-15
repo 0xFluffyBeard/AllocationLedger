@@ -1,4 +1,28 @@
 {
+  "name": "allocation-ledger",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "npx hardhat test",
+    "lint": "npx eslint '**/*.js'",
+    "lint-fix": "npx eslint '**/*.js' --fix",
+    "pretty": "npx prettier '**/*.{json,sol,md}' --check",
+    "pretty-fix": "npx prettier '**/*.{json,sol,md}' --write",
+    "hint": "npx solhint 'contracts/**/*.sol'",
+    "hint-fix": "npx solhint 'contracts/**/*.sol' --fix",
+    "fix-all": "npm run pretty-fix && npm run hint-fix && npm run lint-fix"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/0xFluffyBeard/AllocationLedger.git"
+  },
+  "author": "0xFluffyBeard",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/0xFluffyBeard/AllocationLedger/issues"
+  },
+  "homepage": "https://github.com/0xFluffyBeard/AllocationLedger#readme",
   "devDependencies": {
     "@nomiclabs/hardhat-ethers": "^2.0.6",
     "@nomiclabs/hardhat-etherscan": "^3.0.3",

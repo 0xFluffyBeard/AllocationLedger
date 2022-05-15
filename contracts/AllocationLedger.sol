@@ -22,9 +22,11 @@ contract AllocationLedger is ReentrancyGuard, Context, Ownable, Pausable {
     // Address of the token used for deposits.
     address public token;
     // Optional overall deposit limit. Disabled if 0.
-    uint256 public depositLimit = 0;
-    // Optional deposit limit per user. Disabled if 0.
-    uint256 public depositUserLimit = 0;
+    uint256 public depositMax = 0;
+    // Optional max amount a single user can deposit. Disabled if 0.
+    uint256 public depositUserMax = 0;
+    // Optional min amount a single user should deposit. Disabled if 0.
+    uint256 public depositUserMin = 0;
     // Number of addresses in the whitelist. Used to check if the whitelist is enable.
     uint256 public whitelistLength = 0;
 
@@ -67,19 +69,20 @@ contract AllocationLedger is ReentrancyGuard, Context, Ownable, Pausable {
     /**
      * @dev Constructor with the default values.
      * @param token_ Address of the ERC20 token contract that will be deposited to this contract.
-     * @param depositLimit_ Maximumn amount of tokens that can be deposited to this contract. Will be disabled if equal 0.
-     * @param depositUserLimit_ Maximum amount a single account can deposit to this contract. Will be disabled if equal 0.
+     * @param depositMax_ Maximumn amount of tokens that can be deposited to this contract. Will be disabled if equal 0.
+     * @param depositUserMax_ Maximum amount a single account can deposit to this contract. Will be disabled if equal 0.
      * @param whitelist_ List of addresses to add to the whitelist. If the array is empty, the whitelist will be disabled.
      */
     constructor(
         address token_,
-        uint256 depositLimit_,
-        uint256 depositUserLimit_,
+        uint256 depositMax_,
+        uint256 depositUserMax_,
+        uint256 depositUserMin_,
         address[] memory whitelist_
     ) {
         token = token_;
 
-        setLimits(depositLimit_, depositUserLimit_);
+        setLimits(depositMax_, depositUserMax_, depositUserMin_);
         addToWhitelist(whitelist_);
     }
 
@@ -98,12 +101,16 @@ contract AllocationLedger is ReentrancyGuard, Context, Ownable, Pausable {
         uint256 _newTotalDeposits = totalDeposits.add(depositAmount);
 
         require(
-            depositLimit == 0 || _newTotalDeposits < depositLimit,
+            depositMax == 0 || _newTotalDeposits < depositMax,
             "Global deposit limit exceded"
         );
         require(
-            depositUserLimit == 0 || _newDeposit <= depositUserLimit,
-            "User deposit limit exceded"
+            depositUserMax == 0 || _newDeposit <= depositUserMax,
+            "User max deposit limit exceded"
+        );
+        require(
+            depositUserMin == 0 || _newDeposit >= depositUserMin,
+            "User min deposit not reached"
         );
 
         require(
@@ -178,12 +185,14 @@ contract AllocationLedger is ReentrancyGuard, Context, Ownable, Pausable {
     /**
      * @dev Set the deposit limits.
      */
-    function setLimits(uint256 depositLimit_, uint256 depositUserLimit_)
-        public
-        onlyOwner
-    {
-        depositLimit = depositLimit_;
-        depositUserLimit = depositUserLimit_;
+    function setLimits(
+        uint256 depositMax_,
+        uint256 depositUserMax_,
+        uint256 depositUserMin_
+    ) public onlyOwner {
+        depositMax = depositMax_;
+        depositUserMax = depositUserMax_;
+        depositUserMin = depositUserMin_;
     }
 
     /**

@@ -2,8 +2,9 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
 describe("AllocationLedger", function () {
-  const depositLimit = ethers.utils.parseEther("50000");
-  const depositUserLimit = ethers.utils.parseEther("10000");
+  const depositMax = ethers.utils.parseEther("50000");
+  const depositUserMax = ethers.utils.parseEther("10000");
+  const depositUserMin = ethers.utils.parseEther("1000");
 
   let creator;
   let account1;
@@ -26,13 +27,14 @@ describe("AllocationLedger", function () {
     );
     ledger = await AllocationLedger.deploy(
       token.address,
-      depositLimit,
-      depositUserLimit,
+      depositMax,
+      depositUserMax,
+      depositUserMin,
       [account1, account2, account3].map((entry) => entry.address)
     );
     await ledger.deployed();
 
-    ledger2 = await AllocationLedger.deploy(token.address, 0, 0, []);
+    ledger2 = await AllocationLedger.deploy(token.address, 0, 0, 0, []);
     await ledger2.deployed();
 
     const approveAmount = ethers.utils.parseEther("1000000");
@@ -48,8 +50,8 @@ describe("AllocationLedger", function () {
     });
 
     it("Should set the limits", async () => {
-      expect(await ledger.depositLimit()).to.equal(depositLimit);
-      expect(await ledger.depositUserLimit()).to.equal(depositUserLimit);
+      expect(await ledger.depositMax()).to.equal(depositMax);
+      expect(await ledger.depositUserMax()).to.equal(depositUserMax);
     });
 
     it("Should whitelist the accounts from constructor", async () => {
@@ -66,21 +68,27 @@ describe("AllocationLedger", function () {
 
   describe("Management", () => {
     it("Should updagte the limits", async () => {
-      const testDepositLimit = ethers.utils.parseEther("60000");
-      const testDepositUserLimit = ethers.utils.parseEther("20000");
+      const testdepositMax = ethers.utils.parseEther("60000");
+      const testdepositUserMax = ethers.utils.parseEther("20000");
+      const testdepositUserMin = ethers.utils.parseEther("10000");
 
-      await ledger.setLimits(testDepositLimit, testDepositUserLimit);
+      await ledger.setLimits(
+        testdepositMax,
+        testdepositUserMax,
+        testdepositUserMin
+      );
 
-      expect(await ledger.depositLimit()).to.equal(testDepositLimit);
-      expect(await ledger.depositUserLimit()).to.equal(testDepositUserLimit);
+      expect(await ledger.depositMax()).to.equal(testdepositMax);
+      expect(await ledger.depositUserMax()).to.equal(testdepositUserMax);
+      expect(await ledger.depositUserMin()).to.equal(testdepositUserMin);
 
-      await ledger.setLimits(depositLimit, depositUserLimit);
+      await ledger.setLimits(depositMax, depositUserMax, depositUserMin);
     });
 
     it("Should allow only the owner to updagte the limits", async () => {
-      await expect(ledger.connect(account1).setLimits(0, 0)).to.be.revertedWith(
-        "Ownable: caller is not the owner"
-      );
+      await expect(
+        ledger.connect(account1).setLimits(0, 0, 0)
+      ).to.be.revertedWith("Ownable: caller is not the owner");
     });
 
     it("Should add to the whitelist and emit an event", async () => {
@@ -198,25 +206,37 @@ describe("AllocationLedger", function () {
     it("Should fail if global limit will be exceded", async () => {
       const limit = ethers.utils.parseEther("10000");
 
-      await ledger2.setLimits(limit, 0);
+      await ledger2.setLimits(limit, 0, 0);
 
       await expect(
         ledger2.connect(account1).deposit(limit.add(1))
       ).to.be.revertedWith("Global deposit limit exceded");
 
-      await ledger2.setLimits(0, 0);
+      await ledger2.setLimits(0, 0, 0);
     });
 
-    it("Should fail if user limit will be exceded", async () => {
-      const limit = ethers.utils.parseEther("10000");
+    it("Should fail if user max limit will be exceded", async () => {
+      const limit = ethers.utils.parseEther("1000");
 
-      await ledger2.setLimits(0, limit);
+      await ledger2.setLimits(0, limit, 0);
 
       await expect(
         ledger2.connect(account1).deposit(limit.add(1))
-      ).to.be.revertedWith("User deposit limit exceded");
+      ).to.be.revertedWith("User max deposit limit exceded");
 
-      await ledger2.setLimits(0, 0);
+      await ledger2.setLimits(0, 0, 0);
+    });
+
+    it("Should fail if user min limit not reached", async () => {
+      const limit = ethers.utils.parseEther("1000");
+
+      await ledger2.setLimits(0, 0, limit);
+
+      await expect(
+        ledger2.connect(account5).deposit(limit.sub(100))
+      ).to.be.revertedWith("User min deposit not reached");
+
+      await ledger2.setLimits(0, 0, 0);
     });
   });
 
