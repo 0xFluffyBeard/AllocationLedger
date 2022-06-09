@@ -8,6 +8,7 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/Context.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/interfaces/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /**
  * @dev This contract can be used to keep a ledger of deposits.
@@ -18,9 +19,10 @@ import "@openzeppelin/contracts/interfaces/IERC20.sol";
  */
 contract AllocationLedger is ReentrancyGuard, Context, Ownable, Pausable {
     using SafeMath for uint256;
+    using SafeERC20 for IERC20;
 
     // Address of the token used for deposits.
-    address public token;
+    IERC20 public depositToken;
     // Optional overall deposit limit. Disabled if 0.
     uint256 public depositMax = 0;
     // Optional max amount a single user can deposit. Disabled if 0.
@@ -68,19 +70,19 @@ contract AllocationLedger is ReentrancyGuard, Context, Ownable, Pausable {
 
     /**
      * @dev Constructor with the default values.
-     * @param token_ Address of the ERC20 token contract that will be deposited to this contract.
+     * @param depositToken_ Address of the ERC20 token contract that will be deposited to this contract.
      * @param depositMax_ Maximumn amount of tokens that can be deposited to this contract. Will be disabled if equal 0.
      * @param depositUserMax_ Maximum amount a single account can deposit to this contract. Will be disabled if equal 0.
      * @param whitelist_ List of addresses to add to the whitelist. If the array is empty, the whitelist will be disabled.
      */
     constructor(
-        address token_,
+        IERC20 depositToken_,
         uint256 depositMax_,
         uint256 depositUserMax_,
         uint256 depositUserMin_,
         address[] memory whitelist_
     ) {
-        token = token_;
+        depositToken = depositToken_;
 
         setLimits(depositMax_, depositUserMax_, depositUserMin_);
         addToWhitelist(whitelist_);
@@ -113,14 +115,7 @@ contract AllocationLedger is ReentrancyGuard, Context, Ownable, Pausable {
             "User min deposit not reached"
         );
 
-        require(
-            IERC20(token).transferFrom(
-                _msgSender(),
-                address(this),
-                depositAmount
-            ),
-            "ERC20 transfer failed"
-        );
+        depositToken.safeTransferFrom(_msgSender(), address(this), depositAmount);
 
         if (_oldDeposit == 0) {
             accounts.push(_msgSender());
@@ -145,10 +140,7 @@ contract AllocationLedger is ReentrancyGuard, Context, Ownable, Pausable {
         nonReentrant
         onlyOwner
     {
-        require(
-            IERC20(token).transfer(_msgSender(), amount),
-            "ERC20 transfer failed"
-        );
+        depositToken.safeTransfer(_msgSender(), amount);
 
         emit Withdrawn(_msgSender());
 

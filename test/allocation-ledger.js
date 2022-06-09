@@ -46,7 +46,7 @@ describe("AllocationLedger", function () {
 
   describe("Creation", () => {
     it("Should set the token state variable", async () => {
-      expect(await ledger.token()).to.equal(token.address);
+      expect(await ledger.depositToken()).to.equal(token.address);
     });
 
     it("Should set the limits", async () => {
