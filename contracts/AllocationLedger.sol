@@ -1,9 +1,9 @@
 //SPDX-License-Identifier: Unlicense
 
-pragma solidity ^0.8.5;
+pragma solidity ^0.8.9;
 
+import "./PausableActions.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/Context.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
@@ -17,9 +17,11 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
  *      The contract will keep the ledger of the ammounts deposited by the users.
  *      The contract can calculate the percentage of deposits for each user.
  */
-contract AllocationLedger is ReentrancyGuard, Context, Ownable, Pausable {
+contract AllocationLedger is ReentrancyGuard, Context, Ownable, PausableActions {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
+
+    bytes32 public constant PAUSE_ACTION_DEPOSIT = keccak256("PAUSE_ACTION_DEPOSIT");
 
     // Address of the token used for deposits.
     IERC20 public depositToken;
@@ -37,6 +39,7 @@ contract AllocationLedger is ReentrancyGuard, Context, Ownable, Pausable {
 
     // List of all users who diposited tokens.
     address[] public accounts;
+
     // Mapping of all user deposits.
     mapping(address => uint256) public deposits;
 
@@ -55,7 +58,7 @@ contract AllocationLedger is ReentrancyGuard, Context, Ownable, Pausable {
         uint256 newDeposit
     );
     // Emited when the owner withdraws the deposited funds
-    event Withdrawn(address indexed account);
+    event Withdrawn(address indexed account, uint256 amount);
 
     /**
      * @dev Reverts the transaction if the `account` is not whitelist while the whitelist is enabled.
@@ -95,9 +98,10 @@ contract AllocationLedger is ReentrancyGuard, Context, Ownable, Pausable {
     function deposit(uint256 depositAmount)
         external
         nonReentrant
-        whenNotPaused
+        whenNotPausedAction(PAUSE_ACTION_DEPOSIT)
         onlyWhitelisted(_msgSender())
     {
+        
         uint256 _oldDeposit = deposits[_msgSender()];
         uint256 _newDeposit = _oldDeposit.add(depositAmount);
         uint256 _newTotalDeposits = totalDeposits.add(depositAmount);
@@ -135,17 +139,17 @@ contract AllocationLedger is ReentrancyGuard, Context, Ownable, Pausable {
     /**
      * @dev Used by the owner to withdraw all deposited funds to the `_msgSender()` address.
      */
-    function withdraw(uint256 amount, bool pause_)
+    function withdrawDeposits(uint256 amount, bool pauseDeposits_)
         external
         nonReentrant
         onlyOwner
     {
         depositToken.safeTransfer(_msgSender(), amount);
 
-        emit Withdrawn(_msgSender());
+        emit Withdrawn(_msgSender(), amount);
 
-        if (pause_) {
-            _pause();
+        if (pauseDeposits_) {
+            _pause(PAUSE_ACTION_DEPOSIT);
         }
     }
 
@@ -221,8 +225,22 @@ contract AllocationLedger is ReentrancyGuard, Context, Ownable, Pausable {
     /**
      * @dev External function to pause the deposits.
      */
+    function pauseAction(bytes32 action) external onlyOwner {
+        _pause(action);
+    }
+
+    /**
+     * @dev External function to pause the deposits.
+     */
     function unpause() external onlyOwner {
         _unpause();
+    }
+
+    /**
+     * @dev External function to pause the deposits.
+     */
+    function unpauseAction(bytes32 action) external onlyOwner {
+        _unpause(action);
     }
 
     /**

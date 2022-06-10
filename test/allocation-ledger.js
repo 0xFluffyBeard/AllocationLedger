@@ -1,10 +1,14 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { utils } = ethers;
 
 describe("AllocationLedger", function () {
   const depositMax = ethers.utils.parseEther("50000");
   const depositUserMax = ethers.utils.parseEther("10000");
   const depositUserMin = ethers.utils.parseEther("1000");
+
+  const PAUSE_ACTION_DEPOSIT = utils.keccak256(utils.toUtf8Bytes("PAUSE_ACTION_DEPOSIT"));
+  const PAUSE_ACTION_WITHDRAW = utils.keccak256(utils.toUtf8Bytes("PAUSE_ACTION_WITHDRAW"));
 
   let creator;
   let account1;
@@ -125,12 +129,21 @@ describe("AllocationLedger", function () {
       ).to.be.revertedWith("Ownable: caller is not the owner");
     });
 
-    it("Should pause and unpause the contract", async () => {
+    it("Should pause and unpause the default action", async () => {
       expect(await ledger.paused()).to.be.false;
       await ledger.pause();
       expect(await ledger.paused()).to.be.true;
       await ledger.unpause();
       expect(await ledger.paused()).to.be.false;
+    });
+
+    it("Should pause and unpause an action", async () => {
+      const PAUSE_ACTION_CUSTOM = ethers.utils.formatBytes32String("PAUSE_ACTION_CUSTOM");
+      expect(await ledger.pausedAction(PAUSE_ACTION_CUSTOM)).to.be.false;
+      await ledger.pauseAction(PAUSE_ACTION_CUSTOM);
+      expect(await ledger.pausedAction(PAUSE_ACTION_CUSTOM)).to.be.true;
+      await ledger.unpauseAction(PAUSE_ACTION_CUSTOM);
+      expect(await ledger.pausedAction(PAUSE_ACTION_CUSTOM)).to.be.false;
     });
 
     it("Should allow only the owner to manage the paused state", async () => {
@@ -175,13 +188,13 @@ describe("AllocationLedger", function () {
     });
 
     it("Should fail when paused", async () => {
-      await ledger2.pause();
+      await ledger2.pauseAction(PAUSE_ACTION_DEPOSIT);
 
       await expect(
         ledger2.connect(account1).deposit(ethers.utils.parseEther("1000"))
       ).to.be.revertedWith("Pausable: paused");
 
-      await ledger2.unpause();
+      await ledger2.unpauseAction(PAUSE_ACTION_DEPOSIT);
     });
 
     it("Should allow diposits to whitelisted users but fail for others", async () => {
@@ -254,9 +267,9 @@ describe("AllocationLedger", function () {
       const totalDeposits = await ledger2.totalDeposits();
       const amount = ethers.utils.parseEther("1000");
 
-      await expect(ledger2.withdraw(amount, false))
+      await expect(ledger2.withdrawDeposits(amount, false))
         .to.emit(ledger2, "Withdrawn")
-        .withArgs(creator.address);
+        .withArgs(creator.address, amount);
 
       expect(await token.balanceOf(creator.address)).to.equal(
         ownerBalance.add(amount)
@@ -266,21 +279,21 @@ describe("AllocationLedger", function () {
       );
       expect(await ledger2.totalDeposits()).to.equal(totalDeposits);
 
-      expect(await ledger2.paused()).to.be.false;
+      expect(await ledger2.pausedAction(PAUSE_ACTION_DEPOSIT)).to.be.false;
     });
 
     it("Should pause the contract after withdrawal", async () => {
       const amount = ethers.utils.parseEther("1000");
-      await expect(ledger2.withdraw(amount, true))
+      await expect(ledger2.withdrawDeposits(amount, true))
         .to.emit(ledger2, "Withdrawn")
-        .withArgs(creator.address);
+        .withArgs(creator.address, amount);
 
-      expect(await ledger2.paused()).to.be.true;
+      expect(await ledger2.pausedAction(PAUSE_ACTION_DEPOSIT)).to.be.true;
     });
 
     it("Should allow only the owner to withdraw", async () => {
       await expect(
-        ledger2.connect(account1).withdraw(0, false)
+        ledger2.connect(account1).withdrawDeposits(0, false)
       ).to.be.revertedWith("Ownable: caller is not the owner");
     });
   });
