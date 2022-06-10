@@ -22,35 +22,37 @@ describe("AllocationLedger", function () {
       await ethers.getSigners();
 
     const ERC20Mock = await ethers.getContractFactory("ERC20Mock");
-    token = await ERC20Mock.deploy(
+    depositToken = await ERC20Mock.deploy(
       [account1, account2, account3, account4].map((entry) => entry.address)
     );
+    rewardsToken = await ERC20Mock.deploy([]);
 
     const AllocationLedger = await ethers.getContractFactory(
       "AllocationLedger"
     );
     ledger = await AllocationLedger.deploy(
-      token.address,
+      depositToken.address,
       depositMax,
       depositUserMax,
       depositUserMin,
-      [account1, account2, account3].map((entry) => entry.address)
+      [account1, account2, account3].map((entry) => entry.address),
+      rewardsToken.address
     );
     await ledger.deployed();
 
-    ledger2 = await AllocationLedger.deploy(token.address, 0, 0, 0, []);
+    ledger2 = await AllocationLedger.deploy(depositToken.address, 0, 0, 0, [], rewardsToken.address);
     await ledger2.deployed();
 
     const approveAmount = ethers.utils.parseEther("1000000");
-    await token.connect(account1).approve(ledger2.address, approveAmount);
-    await token.connect(account2).approve(ledger2.address, approveAmount);
-    await token.connect(account3).approve(ledger2.address, approveAmount);
-    await token.connect(account4).approve(ledger2.address, approveAmount);
+    await depositToken.connect(account1).approve(ledger2.address, approveAmount);
+    await depositToken.connect(account2).approve(ledger2.address, approveAmount);
+    await depositToken.connect(account3).approve(ledger2.address, approveAmount);
+    await depositToken.connect(account4).approve(ledger2.address, approveAmount);
   });
 
   describe("Creation", () => {
-    it("Should set the token state variable", async () => {
-      expect(await ledger.depositToken()).to.equal(token.address);
+    it("Should set the deposit token state variable", async () => {
+      expect(await ledger.depositToken()).to.equal(depositToken.address);
     });
 
     it("Should set the limits", async () => {
@@ -67,6 +69,10 @@ describe("AllocationLedger", function () {
     it("Should not whitelist other accounts", async () => {
       expect(await ledger.isWhitelisted(account4.address)).to.be.false;
       expect(await ledger.isWhitelisted(account5.address)).to.be.false;
+    });
+
+    it("Should set the rewards token state variable", async () => {
+      expect(await ledger.rewardsToken()).to.equal(rewardsToken.address);
     });
   });
 
@@ -166,8 +172,8 @@ describe("AllocationLedger", function () {
     it("Should deposit ERC20 to the contract's ballance", async () => {
       const user = account1;
       const userDeposit = await ledger2.getAccountDeposit(user.address);
-      const userBalance = await token.balanceOf(user.address);
-      const ledger2Balance = await token.balanceOf(ledger2.address);
+      const userBalance = await depositToken.balanceOf(user.address);
+      const ledger2Balance = await depositToken.balanceOf(ledger2.address);
       const totalDeposits = await ledger2.totalDeposits();
       const amount = ethers.utils.parseEther("1000");
 
@@ -178,10 +184,10 @@ describe("AllocationLedger", function () {
       expect(await ledger2.getAccountDeposit(user.address)).to.equal(
         userDeposit.add(amount)
       );
-      expect(await token.balanceOf(user.address)).to.equal(
+      expect(await depositToken.balanceOf(user.address)).to.equal(
         userBalance.sub(amount)
       );
-      expect(await token.balanceOf(ledger2.address)).to.equal(
+      expect(await depositToken.balanceOf(ledger2.address)).to.equal(
         ledger2Balance.add(amount)
       );
       expect(await ledger2.totalDeposits()).to.equal(totalDeposits.add(amount));
@@ -261,9 +267,9 @@ describe("AllocationLedger", function () {
       await ledger2.connect(account3).deposit(amount);
     });
 
-    it("Should withdraw tokens to the caller", async () => {
-      const ownerBalance = await token.balanceOf(creator.address);
-      const ledger2Balance = await token.balanceOf(ledger2.address);
+    it("Should withdraw deposited tokens to the caller", async () => {
+      const ownerBalance = await depositToken.balanceOf(creator.address);
+      const ledger2Balance = await depositToken.balanceOf(ledger2.address);
       const totalDeposits = await ledger2.totalDeposits();
       const amount = ethers.utils.parseEther("1000");
 
@@ -271,10 +277,10 @@ describe("AllocationLedger", function () {
         .to.emit(ledger2, "Withdrawn")
         .withArgs(creator.address, amount);
 
-      expect(await token.balanceOf(creator.address)).to.equal(
+      expect(await depositToken.balanceOf(creator.address)).to.equal(
         ownerBalance.add(amount)
       );
-      expect(await token.balanceOf(ledger2.address)).to.equal(
+      expect(await depositToken.balanceOf(ledger2.address)).to.equal(
         ledger2Balance.sub(amount)
       );
       expect(await ledger2.totalDeposits()).to.equal(totalDeposits);
