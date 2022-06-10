@@ -2,13 +2,17 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { utils } = ethers;
 
-describe("AllocationLedger", function () {
+describe("AllocationLedger", () => {
   const depositMax = ethers.utils.parseEther("50000");
   const depositUserMax = ethers.utils.parseEther("10000");
   const depositUserMin = ethers.utils.parseEther("1000");
 
-  const PAUSE_ACTION_DEPOSIT = utils.keccak256(utils.toUtf8Bytes("PAUSE_ACTION_DEPOSIT"));
-  const PAUSE_ACTION_WITHDRAW = utils.keccak256(utils.toUtf8Bytes("PAUSE_ACTION_WITHDRAW"));
+  const PAUSE_ACTION_DEPOSIT = utils.keccak256(
+    utils.toUtf8Bytes("PAUSE_ACTION_DEPOSIT")
+  );
+  const PAUSE_ACTION_CLAIM = utils.keccak256(
+    utils.toUtf8Bytes("PAUSE_ACTION_CLAIM")
+  );
 
   let creator;
   let account1;
@@ -26,6 +30,7 @@ describe("AllocationLedger", function () {
       [account1, account2, account3, account4].map((entry) => entry.address)
     );
     rewardsToken = await ERC20Mock.deploy([]);
+    rewardsToken2 = await ERC20Mock.deploy([]);
 
     const AllocationLedger = await ethers.getContractFactory(
       "AllocationLedger"
@@ -40,14 +45,29 @@ describe("AllocationLedger", function () {
     );
     await ledger.deployed();
 
-    ledger2 = await AllocationLedger.deploy(depositToken.address, 0, 0, 0, [], rewardsToken.address);
+    ledger2 = await AllocationLedger.deploy(
+      depositToken.address,
+      0,
+      0,
+      0,
+      [],
+      rewardsToken.address
+    );
     await ledger2.deployed();
 
     const approveAmount = ethers.utils.parseEther("1000000");
-    await depositToken.connect(account1).approve(ledger2.address, approveAmount);
-    await depositToken.connect(account2).approve(ledger2.address, approveAmount);
-    await depositToken.connect(account3).approve(ledger2.address, approveAmount);
-    await depositToken.connect(account4).approve(ledger2.address, approveAmount);
+    await depositToken
+      .connect(account1)
+      .approve(ledger2.address, approveAmount);
+    await depositToken
+      .connect(account2)
+      .approve(ledger2.address, approveAmount);
+    await depositToken
+      .connect(account3)
+      .approve(ledger2.address, approveAmount);
+    await depositToken
+      .connect(account4)
+      .approve(ledger2.address, approveAmount);
   });
 
   describe("Creation", () => {
@@ -61,14 +81,14 @@ describe("AllocationLedger", function () {
     });
 
     it("Should whitelist the accounts from constructor", async () => {
-      expect(await ledger.isWhitelisted(account1.address)).to.be.true;
-      expect(await ledger.isWhitelisted(account2.address)).to.be.true;
-      expect(await ledger.isWhitelisted(account3.address)).to.be.true;
+      expect(await ledger.whitelisted(account1.address)).to.be.true;
+      expect(await ledger.whitelisted(account2.address)).to.be.true;
+      expect(await ledger.whitelisted(account3.address)).to.be.true;
     });
 
     it("Should not whitelist other accounts", async () => {
-      expect(await ledger.isWhitelisted(account4.address)).to.be.false;
-      expect(await ledger.isWhitelisted(account5.address)).to.be.false;
+      expect(await ledger.whitelisted(account4.address)).to.be.false;
+      expect(await ledger.whitelisted(account5.address)).to.be.false;
     });
 
     it("Should set the rewards token state variable", async () => {
@@ -102,18 +122,18 @@ describe("AllocationLedger", function () {
     });
 
     it("Should add to the whitelist and emit an event", async () => {
-      expect(await ledger.isWhitelisted(account4.address)).to.be.false;
+      expect(await ledger.whitelisted(account4.address)).to.be.false;
 
       await expect(ledger.addToWhitelist([account4.address]))
         .to.emit(ledger, "WhitelistEntryAdded")
         .withArgs(account4.address);
 
-      expect(await ledger.isWhitelisted(account4.address)).to.be.true;
+      expect(await ledger.whitelisted(account4.address)).to.be.true;
     });
 
     it("Should remove from the whitelist and emit an event", async () => {
-      expect(await ledger.isWhitelisted(account3.address)).to.be.true;
-      expect(await ledger.isWhitelisted(account4.address)).to.be.true;
+      expect(await ledger.whitelisted(account3.address)).to.be.true;
+      expect(await ledger.whitelisted(account4.address)).to.be.true;
 
       await expect(ledger.removeFromWhitelist([account3.address]))
         .to.emit(ledger, "WhitelistEntryRemoved")
@@ -122,8 +142,8 @@ describe("AllocationLedger", function () {
         .to.emit(ledger, "WhitelistEntryRemoved")
         .withArgs(account4.address);
 
-      expect(await ledger.isWhitelisted(account3.address)).to.be.false;
-      expect(await ledger.isWhitelisted(account4.address)).to.be.false;
+      expect(await ledger.whitelisted(account3.address)).to.be.false;
+      expect(await ledger.whitelisted(account4.address)).to.be.false;
     });
 
     it("Should allow only the owner to manage the whitelist", async () => {
@@ -132,6 +152,24 @@ describe("AllocationLedger", function () {
       ).to.be.revertedWith("Ownable: caller is not the owner");
       await expect(
         ledger.connect(account1).removeFromWhitelist([])
+      ).to.be.revertedWith("Ownable: caller is not the owner");
+    });
+
+    it("Should updagte the rewards token", async () => {
+      const oldRewardsToken = await ledger.rewardsToken();
+
+      await ledger.setRewardsToken(rewardsToken2.address);
+
+      expect(await ledger.rewardsToken()).to.be.equal(rewardsToken2.address);
+
+      await ledger.setRewardsToken(oldRewardsToken);
+
+      expect(await ledger.rewardsToken()).to.be.equal(oldRewardsToken);
+    });
+
+    it("Should allow only the owner to set the rewards token", async () => {
+      await expect(
+        ledger.connect(account1).setRewardsToken(rewardsToken2.address)
       ).to.be.revertedWith("Ownable: caller is not the owner");
     });
 
@@ -144,7 +182,9 @@ describe("AllocationLedger", function () {
     });
 
     it("Should pause and unpause an action", async () => {
-      const PAUSE_ACTION_CUSTOM = ethers.utils.formatBytes32String("PAUSE_ACTION_CUSTOM");
+      const PAUSE_ACTION_CUSTOM = ethers.utils.formatBytes32String(
+        "PAUSE_ACTION_CUSTOM"
+      );
       expect(await ledger.pausedAction(PAUSE_ACTION_CUSTOM)).to.be.false;
       await ledger.pauseAction(PAUSE_ACTION_CUSTOM);
       expect(await ledger.pausedAction(PAUSE_ACTION_CUSTOM)).to.be.true;
@@ -152,13 +192,25 @@ describe("AllocationLedger", function () {
       expect(await ledger.pausedAction(PAUSE_ACTION_CUSTOM)).to.be.false;
     });
 
-    it("Should allow only the owner to manage the paused state", async () => {
+    it("Should allow only the owner to manage the paused state of the default action", async () => {
       await expect(ledger.connect(account1).pause()).to.be.revertedWith(
         "Ownable: caller is not the owner"
       );
       await expect(ledger.connect(account1).unpause()).to.be.revertedWith(
         "Ownable: caller is not the owner"
       );
+    });
+
+    it("Should allow only the owner to manage the paused state of an action", async () => {
+      const PAUSE_ACTION_CUSTOM = ethers.utils.formatBytes32String(
+        "PAUSE_ACTION_CUSTOM"
+      );
+      await expect(
+        ledger.connect(account1).pauseAction(PAUSE_ACTION_CUSTOM)
+      ).to.be.revertedWith("Ownable: caller is not the owner");
+      await expect(
+        ledger.connect(account1).unpauseAction(PAUSE_ACTION_CUSTOM)
+      ).to.be.revertedWith("Ownable: caller is not the owner");
     });
 
     it("Should not allow to renounce the ownership", async () => {
@@ -171,7 +223,7 @@ describe("AllocationLedger", function () {
   describe("Deposit", () => {
     it("Should deposit ERC20 to the contract's ballance", async () => {
       const user = account1;
-      const userDeposit = await ledger2.getAccountDeposit(user.address);
+      const userDeposit = await ledger2.deposits(user.address);
       const userBalance = await depositToken.balanceOf(user.address);
       const ledger2Balance = await depositToken.balanceOf(ledger2.address);
       const totalDeposits = await ledger2.totalDeposits();
@@ -181,7 +233,7 @@ describe("AllocationLedger", function () {
         .to.emit(ledger2, "DepositAdded")
         .withArgs(user.address, amount, userDeposit, userDeposit.add(amount));
 
-      expect(await ledger2.getAccountDeposit(user.address)).to.equal(
+      expect(await ledger2.deposits(user.address)).to.equal(
         userDeposit.add(amount)
       );
       expect(await depositToken.balanceOf(user.address)).to.equal(
@@ -313,10 +365,117 @@ describe("AllocationLedger", function () {
     await ledger2.connect(account3).deposit(amount);
 
     const totalDeposits = await ledger2.totalDeposits();
-    const userDeposit = await ledger2.getAccountDeposit(user.address);
+    const userDeposit = await ledger2.deposits(user.address);
 
     expect(await ledger2.getAccountShare(user.address)).to.equal(
-      userDeposit.mul(100).div(totalDeposits)
+      userDeposit.mul(10 ** 8).div(totalDeposits)
     );
+  });
+
+  describe("Rewards2", () => {
+    before(async () => {
+      const ERC20Mock = await ethers.getContractFactory("ERC20Mock");
+      depositToken3 = await ERC20Mock.deploy(
+        [account1, account2, account3, account4].map((entry) => entry.address)
+      );
+      rewardsToken3 = await ERC20Mock.deploy([]);
+
+      const AllocationLedger = await ethers.getContractFactory(
+        "AllocationLedger"
+      );
+      ledger3 = await AllocationLedger.deploy(
+        depositToken3.address,
+        0,
+        0,
+        0,
+        [],
+        rewardsToken3.address
+      );
+      await ledger3.deployed();
+
+      const approveAmount = ethers.utils.parseEther("10000000000");
+      await depositToken3
+        .connect(account1)
+        .approve(ledger3.address, approveAmount);
+      await depositToken3
+        .connect(account2)
+        .approve(ledger3.address, approveAmount);
+      await depositToken3
+        .connect(account3)
+        .approve(ledger3.address, approveAmount);
+      await depositToken3
+        .connect(account4)
+        .approve(ledger3.address, approveAmount);
+
+      await ledger3
+        .connect(account1)
+        .deposit(ethers.utils.parseEther("1265.876543210123456786"));
+      await ledger3
+        .connect(account2)
+        .deposit(ethers.utils.parseEther("1234.123456789876543214"));
+      await ledger3.connect(account3).deposit(ethers.utils.parseEther("2500"));
+      await ledger3.connect(account4).deposit(ethers.utils.parseEther("5000"));
+
+      const rewardsAmount = ethers.utils.parseEther("100000");
+      await rewardsToken3.approve(ledger3.address, approveAmount);
+      await ledger3.depositRewards(rewardsAmount);
+
+      await ledger3.pauseDeposit();
+      await ledger3.unpauseClaim();
+    });
+
+    it("Should allow only the owner to deposit rewards", async () => {
+      await expect(
+        ledger2
+          .connect(account1)
+          .depositRewards(ethers.utils.parseEther("100000"))
+      ).to.be.revertedWith("Ownable: caller is not the owner");
+    });
+
+    it("Should calculate correct rewards", async () => {
+      expect(await ledger3.getAccountRewards(account1.address)).to.be.equal(
+        ethers.utils.parseEther("12658.765")
+      );
+      expect(await ledger3.getAccountRewards(account2.address)).to.be.equal(
+        ethers.utils.parseEther("12341.234")
+      );
+      expect(await ledger3.getAccountRewards(account3.address)).to.be.equal(
+        ethers.utils.parseEther("25000.0")
+      );
+      expect(await ledger3.getAccountRewards(account4.address)).to.be.equal(
+        ethers.utils.parseEther("50000.0")
+      );
+    });
+
+    it("Should claim the proper amount", async () => {
+      const oldBalance = await rewardsToken3.balanceOf(account1.address);
+      const oldAccountRewards = await ledger3.getAccountRewards(
+        account1.address
+      );
+      const oldClaimedRewards = await ledger3.claims(account1.address);
+      const oldAvailableRewards = await oldAccountRewards.sub(
+        oldClaimedRewards
+      );
+
+      await ledger3.connect(account1).claimRewards();
+
+      const newBalance = await rewardsToken3.balanceOf(account1.address);
+      const newAccountRewards = await ledger3.getAccountRewards(
+        account1.address
+      );
+      const newClaimedRewards = await ledger3.claims(account1.address);
+      const newAvailableRewards = await newAccountRewards.sub(
+        newClaimedRewards
+      );
+
+      expect(newBalance).to.be.equal(oldBalance.add(oldAccountRewards));
+      expect(newAccountRewards).to.be.equal(oldAccountRewards);
+      expect(newClaimedRewards).to.be.equal(newAccountRewards);
+      expect(newAvailableRewards).to.be.equal(ethers.utils.parseEther("0"));
+
+      expect(newAccountRewards).to.be.equal(
+        ethers.utils.parseEther("12658.765")
+      );
+    });
   });
 });

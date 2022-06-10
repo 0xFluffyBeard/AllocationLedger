@@ -17,12 +17,21 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
  *      The contract will keep the ledger of the ammounts deposited by the users.
  *      The contract can calculate the percentage of deposits for each user.
  */
-contract AllocationLedger is ReentrancyGuard, Context, Ownable, PausableActions {
+contract AllocationLedger is
+    ReentrancyGuard,
+    Context,
+    Ownable,
+    PausableActions
+{
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
-    bytes32 public constant PAUSE_ACTION_DEPOSIT = keccak256("PAUSE_ACTION_DEPOSIT");
-    bytes32 public constant PAUSE_ACTION_CLAIM = keccak256("PAUSE_ACTION_CLAIM");
+    uint256 public constant PRECISION = 10**6;
+
+    bytes32 public constant PAUSE_ACTION_DEPOSIT =
+        keccak256("PAUSE_ACTION_DEPOSIT");
+    bytes32 public constant PAUSE_ACTION_CLAIM =
+        keccak256("PAUSE_ACTION_CLAIM");
 
     // Address of the token used for deposits.
     IERC20 public depositToken;
@@ -54,7 +63,7 @@ contract AllocationLedger is ReentrancyGuard, Context, Ownable, PausableActions 
     mapping(address => uint256) public claims;
 
     // Mapping with addresses, who can deposit.
-    mapping(address => bool) public whitelist;
+    mapping(address => bool) public whitelisted;
 
     // Emited when an address is added to the whitelist.
     event WhitelistEntryAdded(address indexed account);
@@ -72,14 +81,18 @@ contract AllocationLedger is ReentrancyGuard, Context, Ownable, PausableActions 
     // Emited when the owner deposits the reward tokens.
     event RewardsDeposited(address indexed account, uint256 amount);
     // Emited when the user claims rewards.
-    event RewardsClaimed(address indexed account, uint256 amount, uint256 oldAmount);
+    event RewardsClaimed(
+        address indexed account,
+        uint256 amount,
+        uint256 oldAmount
+    );
 
     /**
      * @dev Reverts the transaction if the `account` is not whitelist while the whitelist is enabled.
      */
     modifier onlyWhitelisted(address account) {
         require(
-            whitelistLength == 0 || isWhitelisted(account),
+            whitelistLength == 0 || whitelisted[account],
             "Account not whitelisted"
         );
         _;
@@ -119,7 +132,6 @@ contract AllocationLedger is ReentrancyGuard, Context, Ownable, PausableActions 
         whenNotPausedAction(PAUSE_ACTION_DEPOSIT)
         onlyWhitelisted(_msgSender())
     {
-        
         uint256 _oldDeposit = deposits[_msgSender()];
         uint256 _newDeposit = _oldDeposit.add(depositAmount);
         uint256 _newTotalDeposits = totalDeposits.add(depositAmount);
@@ -137,7 +149,11 @@ contract AllocationLedger is ReentrancyGuard, Context, Ownable, PausableActions 
             "User min deposit not reached"
         );
 
-        depositToken.safeTransferFrom(_msgSender(), address(this), depositAmount);
+        depositToken.safeTransferFrom(
+            _msgSender(),
+            address(this),
+            depositAmount
+        );
 
         if (_oldDeposit == 0) {
             accounts.push(_msgSender());
@@ -159,12 +175,13 @@ contract AllocationLedger is ReentrancyGuard, Context, Ownable, PausableActions 
      */
     function claimRewards()
         external
+        whenPausedAction(PAUSE_ACTION_DEPOSIT)
         whenNotPausedAction(PAUSE_ACTION_CLAIM)
         onlyWhitelisted(_msgSender())
     {
         require(deposits[_msgSender()] > 0, "Account never deposited");
 
-        uint256 accountShare = getAccountShare(_msgSender());
+        uint256 accountShare = getAccountRewards(_msgSender());
         uint256 alreadyClaimed = claims[_msgSender()];
         uint256 amount = accountShare - alreadyClaimed;
 
@@ -196,41 +213,49 @@ contract AllocationLedger is ReentrancyGuard, Context, Ownable, PausableActions 
     /**
      * @dev Used by the owner to deposit the rewards tokens.
      */
-    function depositRewards(uint256 amount)
-        external
-        whenPausedAction(PAUSE_ACTION_DEPOSIT)
-        onlyOwner
-    {
+    function depositRewards(uint256 amount) external onlyOwner {
         require(address(rewardsToken) != address(0), "Rewards token not set");
         require(totalDeposits > 0, "No deposits");
 
         rewardsToken.transferFrom(_msgSender(), address(this), amount);
-        totalRewardsDeposited = totalRewardsDeposited.add(amount);
+        totalRewardsDeposited += amount;
     }
 
     /**
-     * @dev Returns the account's current deposit.
+     * @dev Used by the owner to withdraw rest of the rewards.
      */
-    function getAccountDeposit(address account)
-        public
-        view
-        returns (uint256)
-    {
-        return deposits[account];
+    function withdrawRewards(uint256 amount) external onlyOwner {
+        uint256 availableRewards = totalRewardsDeposited - totalRewardsClaimed;
+        require(availableRewards >= amount, "Not enough rewards");
+
+        rewardsToken.safeTransfer(_msgSender(), amount);
+
+        totalRewardsDeposited -= amount;
     }
 
     /**
-     * @dev Returns the account's share of the total deposits.
+     * @dev Returns the account's share of the total deposits in percent.
+     * @notice To get the percentage, the return value must be devided by PRECISION (10 ** 6).
      */
     function getAccountShare(address account) public view returns (uint256) {
-        return deposits[account].mul(100).div(totalDeposits);
+        return deposits[account].mul(100).mul(PRECISION).div(totalDeposits);
     }
 
     /**
-     * @dev Returns true if the `account` is whitelisted.
+     * @dev Returns the account's share of the total rewards in wei.
      */
-    function isWhitelisted(address account) public view returns (bool) {
-        return whitelist[account];
+    function getAccountRewards(address account) public view returns (uint256) {
+        if (totalRewardsDeposited == 0) {
+            return 0;
+        }
+
+        uint256 accountShare = getAccountShare(account);
+
+        if (accountShare == 0) {
+            return 0;
+        }
+
+        return totalRewardsDeposited.mul(accountShare).div(PRECISION).div(100);
     }
 
     /**
@@ -263,7 +288,7 @@ contract AllocationLedger is ReentrancyGuard, Context, Ownable, PausableActions 
      */
     function addToWhitelist(address[] memory accounts_) public onlyOwner {
         for (uint256 index = 0; index < accounts_.length; index++) {
-            whitelist[accounts_[index]] = true;
+            whitelisted[accounts_[index]] = true;
             emit WhitelistEntryAdded(accounts_[index]);
         }
 
@@ -275,7 +300,7 @@ contract AllocationLedger is ReentrancyGuard, Context, Ownable, PausableActions 
      */
     function removeFromWhitelist(address[] memory accounts_) public onlyOwner {
         for (uint256 index = 0; index < accounts_.length; index++) {
-            whitelist[accounts_[index]] = false;
+            whitelisted[accounts_[index]] = false;
             emit WhitelistEntryRemoved(accounts_[index]);
         }
 
@@ -283,14 +308,14 @@ contract AllocationLedger is ReentrancyGuard, Context, Ownable, PausableActions 
     }
 
     /**
-     * @dev External function to pause the deposits.
+     * @dev External function to pause the default action.
      */
     function pause() external onlyOwner {
         _pause();
     }
 
     /**
-     * @dev External function to pause the deposits.
+     * @dev External function to pause an action.
      */
     function pauseAction(bytes32 action) external onlyOwner {
         _pause(action);
@@ -299,15 +324,43 @@ contract AllocationLedger is ReentrancyGuard, Context, Ownable, PausableActions 
     /**
      * @dev External function to pause the deposits.
      */
+    function pauseDeposit() external onlyOwner {
+        _pause(PAUSE_ACTION_DEPOSIT);
+    }
+
+    /**
+     * @dev External function to pause the claiming.
+     */
+    function pauseClaim() external onlyOwner {
+        _pause(PAUSE_ACTION_CLAIM);
+    }
+
+    /**
+     * @dev External function to unpause the default action.
+     */
     function unpause() external onlyOwner {
         _unpause();
     }
 
     /**
-     * @dev External function to pause the deposits.
+     * @dev External function to unpause an action.
      */
     function unpauseAction(bytes32 action) external onlyOwner {
         _unpause(action);
+    }
+
+    /**
+     * @dev External function to unpause the deposits.
+     */
+    function unpauseDeposit() external onlyOwner {
+        _unpause(PAUSE_ACTION_DEPOSIT);
+    }
+
+    /**
+     * @dev External function to unpause the claiming.
+     */
+    function unpauseClaim() external onlyOwner {
+        _unpause(PAUSE_ACTION_CLAIM);
     }
 
     /**

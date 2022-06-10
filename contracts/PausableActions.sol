@@ -108,7 +108,11 @@ abstract contract PausableActions is Context {
      *
      * - `action` must not be paused.
      */
-    function _pause(bytes32 action) internal virtual whenNotPausedAction(action) {
+    function _pause(bytes32 action)
+        internal
+        virtual
+        whenNotPausedAction(action)
+    {
         _pausedActions[action] = true;
         emit Paused(_msgSender(), action);
     }
@@ -131,7 +135,11 @@ abstract contract PausableActions is Context {
      *
      * - The `action` must be paused.
      */
-    function _unpause(bytes32 action) internal virtual whenPausedAction(action) {
+    function _unpause(bytes32 action)
+        internal
+        virtual
+        whenPausedAction(action)
+    {
         _pausedActions[action] = false;
         emit Unpaused(_msgSender(), action);
     }
