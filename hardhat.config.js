@@ -26,10 +26,14 @@ module.exports = {
   solidity: "0.8.9",
   networks: {
     hardhat: {
-      forking: {
-        url: process.env.OPERA_URL || null,
-        timeout: 12000000,
-      },
+      forking: process.env.HARDHAT_FORK
+        ? {
+            url: process.env.HARDHAT_FORK,
+            blockNumber: process.env.HARDHAT_FORK_BLOCK
+              ? parseInt(process.env.HARDHAT_FORK_BLOCK)
+              : undefined,
+          }
+        : undefined,
       gas: "auto",
     },
   },
