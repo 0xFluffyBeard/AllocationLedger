@@ -175,6 +175,7 @@ contract AllocationLedger is
      */
     function claimRewards()
         external
+        nonReentrant
         whenPausedAction(PAUSE_ACTION_DEPOSIT)
         whenNotPausedAction(PAUSE_ACTION_CLAIM)
         onlyWhitelisted(_msgSender())
@@ -187,9 +188,11 @@ contract AllocationLedger is
 
         require(amount > 0, "Nothing to claim");
 
-        rewardsToken.transfer(_msgSender(), amount);
         claims[_msgSender()] = alreadyClaimed.add(amount);
         totalRewardsClaimed += amount;
+
+        rewardsToken.transfer(_msgSender(), amount);
+
         emit RewardsClaimed(_msgSender(), amount, alreadyClaimed);
     }
 
